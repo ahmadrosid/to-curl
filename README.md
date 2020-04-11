@@ -10,6 +10,48 @@ First copy your http rest client to clipboard then run this script.
 php to-curl.php
 ```
 
+With input like this :
+```bash
+DELETE http://localhost:8000/api/v1/users
+Authorization: Bearer 123
+x-api-permanent-delete: true
+Content-Type: application/json
+
+{
+  "data": [
+    {
+      "type": "member",
+      "id": 3
+    },
+    {
+      "type": "member",
+      "id": 4
+    }
+  ]
+}
+```
+
+Will export to :
+
+```bash
+curl -X DELETE http://localhost:8000/api/v1/users \
+-H 'Authorization: Bearer 123' \
+-H 'x-api-permanent-delete: true' \
+-H 'Content-Type: application/json' \
+-d '{
+  "data": [
+    {
+      "type": "member",
+      "id": 3
+    },
+    {
+      "type": "member",
+      "id": 4
+    }
+  ]
+}'
+```
+
 ## Contribute
 Since this script only works for linux, you can make PR to support mac or window.
 
