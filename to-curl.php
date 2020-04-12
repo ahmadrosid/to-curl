@@ -1,43 +1,24 @@
-
 <?php
 
 class Parser {
-
-    /**
-     * @var string
-     */
-    private $output;
-    /**
-     * @var string
-     */
     private $source;
-    /**
-     * @var int
-     */
-    private $current;
-    /**
-     * @var array
-     */
-    private $headers = [];
-
+    private $output;
+    private $current = 0;
     private static $methods = [
-        "GET" => "GET",
-        "POST" => "POST",
-        "PATCH" => "PATCH",
-        "DELETE" => "DELETE",
+        'GET' => 'GET',
+        'POST' => 'POST',
+        'PUT' => 'PUT',
+        'PATCH' => 'PATCH',
+        'DELETE' => "DELETE"
     ];
 
     /**
      * Parser constructor.
-     * @param string $source
+     * @param $source
      */
-    public function __construct(string $source)
+    public function __construct($source)
     {
-        $this->source = $source;
-    }
-
-    private function appendOutput($str) {
-        $this->output .= $str;
+        $this->source = $source . PHP_EOL . PHP_EOL;
     }
 
     private function isAtEnd() {
@@ -53,15 +34,14 @@ class Parser {
         return $this->source[$this->current - 1];
     }
 
-    private function peekNext() {
-        if ($this->current + 1 >= strlen($this->source)) return '\0';
-        return $this->source[$this->current + 1];
+    private function appendOutput(string $str) {
+        $this->output .= $str;
     }
 
-    private function peekUntil(string $end) {
+    private function peekUntil($end) {
         $value = '';
         $c = $this->peekPrev();
-        while ($c != $end){
+        while ($c != $end) {
             $value .= $c;
             $c = $this->peek();
         }
@@ -69,96 +49,84 @@ class Parser {
         return $value;
     }
 
-    private function getHeaderKeyValue() {
-        $c = $this->peek();
-        while ($c != PHP_EOL) {
+    private function parseKeyValueHeader() {
+        $end = "\n\n";
+        $c = $this->peekPrev() . $this->peek();
+        $headers = [];
+        while ($c != $end) {
             $key = $this->peekUntil(":");
             $this->peek();
-            $value = $this->peekUntil(PHP_EOL);
-            $c = $this->peek();
-            $this->headers[$key] = $value;
+            $value = $this->peekUntil("\n");
+            $c = $this->peekPrev() . $this->peek();
+
+            $headers[$key] = $value;
         }
+
+        $headerString = '';
+        foreach ($headers as $key => $value) {
+            $headerString .= '-H \'' . $key . ':' . $value . '\' \\' . PHP_EOL;
+        }
+
+        return $headerString;
     }
 
     private function parseRequestBody() {
-        if ($this->isAtEnd()) return;
+        if ($this->isAtEnd()) return '';
 
-        $body = "-d '";
-        $c = $this->peek();
+        $value = '';
+        $value .= '-d \'';
         while (!$this->isAtEnd()) {
-            $body .= $c;
-            $c = $this->peek();
+            $value .= $this->peek();
         }
-        $body .= "'";
+        $value = trim($value) .  '\'';
 
-        return $body;
-    }
-
-    private function parseHeaders() {
-        $token = $this->peekPrev() . $this->peekNext();
-        while ($token != "\n\n" && !$this->isAtEnd()) {
-            $this->getHeaderKeyValue();
-            $token = $this->peekPrev() . $this->peekNext();
-        }
-
-        $header = '';
-        foreach ($this->headers as $key => $value) {
-            $header .= "-H '" . $key . ":" . $value . "' \\\n";
-        }
-
-        return $header;
-    }
-
-    private function parseUrl() {
-        $c = $this->peek();
-        $url = '';
-        while ($c != PHP_EOL) {
-            $url .= $c;
-            $c = $this->peek();
-        }
-
-        return trim($url) . " \\" . PHP_EOL;
+        return $value;
     }
 
     private function parseRequest() {
-        $c = $this->peekPrev();
-        $method = '';
-        while ($c !== ' ') {
-            $method .= $c;
-            $c = $this->peek();
-        }
-
+        $method = $this->peekUntil(" ");
         if (array_key_exists($method, self::$methods)) {
-            $this->appendOutput("curl -X");
-            $this->appendOutput(" " . self::$methods[$method]);
-            $this->appendOutput(" " . $this->parseUrl());
-            $this->appendOutput($this->parseHeaders());
-            $this->appendOutput($this->parseRequestBody());
+            // 1. Parse method & url
+            $this->appendOutput("curl -X ");
+            $url = $this->peekUntil("\n");
+            $this->appendOutput($method . $url . " \\" . PHP_EOL);
+
+            // 2. Parse header key, value
+            $header = $this->parseKeyValueHeader();
+            $body = $this->parseRequestBody();
+            if (empty($body)) {
+                $header = rtrim($header, "\n\\");
+            }
+
+            $this->appendOutput($header);
+
+            // 3. Parse request body
+            $this->appendOutput($body);
         }
     }
 
     public function parse() {
-        while (!$this->isAtEnd()){
+        while (!$this->isAtEnd()) {
             $c = $this->peek();
             switch ($c) {
-                case 'P': // POST PATCH PUT
+                case 'P': // POST PUT PATCH
                 case 'G': // GET
-                case 'D': // DELETE
+                case 'D': // Delete
                     $this->parseRequest();
                     break;
             }
         }
+
     }
 
     public function getResult() {
-        return rtrim($this->output, "\\\n");
+        return $this->output;
     }
+
 }
 
-$input = shell_exec("/usr/bin/xclip -o -selection clipboard");
-if (!empty($input)){
-    $parser = new Parser($input);
-    $parser->parse();
+$source = shell_exec("/usr/bin/xclip -o -selection clipboard");
+$parser = new Parser($source);
+$parser->parse();
 
-    echo $parser->getResult();
-}
+echo $parser->getResult();
